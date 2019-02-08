@@ -47,10 +47,11 @@ classdef CloudObject
                 return
             end
             coord = coord(1:lengthArr,:); % Очистка неиспользуемых записей
-            coord = coord - hlfSizes; % Получение координат в СК облака
+            coord = coord - length(coord(:,1)); % Получение координат в СК облака
             coord = coord + [shift 0]; % Сдвиг системы координат
             coord = coord .* [elemLength 1];
-            file = fopen([path name '.czone'], 'wb', 'ieee-le')
+            
+            file = fopen([path name '.czone'], 'wb', 'ieee-le');
             fwrite(file,0,'uint32');
             fwrite(file,cloudID,'uint32');
             fwrite(file,lengthArr,'uint64');
