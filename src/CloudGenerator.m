@@ -64,7 +64,7 @@ classdef CloudGenerator
 
             vRange = vInitialRange;
             curCenter = center;
-            curCenter(1) = curCenter(1) + 1;
+            curCenter(1) = curCenter(1) - 1;
             curIterIndex = 1;
             counter = 0;
             while curCenter(1) > 0
@@ -78,7 +78,6 @@ classdef CloudGenerator
                 end
                 vRange = LayerGenerator.alterateShrinkingRange(vRange,...
                     cell2mat(settings.vShrinkingDown{curIterIndex}(1:6)));
-                curCenter(1) = curCenter(1) - 1;
                 disp(['Height = ' num2str(curCenter(1))]);
                 [xAxes, yAxes, layerArray] = ...
                     LayerGenerator.fillExplosionArea(az,vRange);

@@ -47,7 +47,7 @@ classdef CloudObject
                 return
             end
             coord = coord(1:lengthArr,:); % Очистка неиспользуемых записей
-            coord = coord - length(coord(:,1)); % Получение координат в СК облака
+            coord = coord - ones(length(coord(:,1)),1) * hlfSizes; % Получение координат в СК облака
             coord = coord + [shift 0]; % Сдвиг системы координат
             coord = coord .* [elemLength 1];
             
@@ -60,8 +60,8 @@ classdef CloudObject
                 fwrite(file,coord(step,:),'double'); % пищем вектор 4 
                 %элементов с координатами + опасностью каждой точки
             end
-            f = dir([path name '.cobj']);
-            fseek(file,1,'bof');
+            f = dir([path name '.czone']);
+            fseek(file,0,'bof');
             fwrite(file,f.bytes,'uint32'); % Полный размер файла в байтах
             fclose(file);
             return;
@@ -101,7 +101,7 @@ classdef CloudObject
             for iH = 1:sizes(1)
                 if (counter < iH/sizes(1))
                     counter = counter + 0.01;
-                    disp(['Cubic filtration is under way. Completed '...
+                    disp(['Cubic filtration is underway. Completed '...
                         num2str(round(iH/sizes(1) * 100)) '%']);
                 end
                 for iX = 1:sizes(2)
@@ -111,12 +111,16 @@ classdef CloudObject
                             windowDimensions(2) - 1, iY:iY + ...
                             windowDimensions(3) - 1);
                         maxDanger = max(max(max(tempCube)));
-                        for iDanger = 1:maxDanger
+                        if maxDanger < 1
+                            continue;
+                        end
+                        for iDanger = maxDanger:-1:1
                             binaryCube = zeros(size(tempCube));
-                            binaryCube(tempCube > iDanger) = 1;
+                            binaryCube(tempCube >= iDanger) = 1;
                             if (sum(sum(sum(binaryCube)))/elemsInCube >...
                                     threshold)
                                 obj.phenomenaMatrix(iH, iX, iY) = iDanger;
+                                break;
                             end
                         end
                     end
@@ -160,107 +164,29 @@ classdef CloudObject
                 [-hlfSizes(3) hlfSizes(3)],'zlim',[0 sizes(1) - 1]);
             toc
         end
-        function displayCloud_Unoptimized2(obj, dangerID, bIsFullDisp, color, ax)
-            tic
-            if nargin == 4
-                figure('units','normalized','outerposition',[0.10 0.05 0.8 0.9])
-                hold on;
-                ax = gca;
+        function displayContour(obj, index,mode, xlabel,ylabel, ax)
+            switch mode
+                case 1
+                    img = squeeze(obj.phenomenaMatrix(index,:,:));
+                case 2
+                    img = squeeze(obj.phenomenaMatrix(:,index,:));
+                case 3
+                    img = squeeze(obj.phenomenaMatrix(:,:,index));
             end
-            HullCoords_solid = [];
-            HullLinks_solid = [];
-            if bIsFullDisp == 1
-                HullCoords_transp = [];
-                HullLinks_transp = [];
-            end
-            sizes = size(obj.phenomenaMatrix);
-            hlfSizeY = ceil(sizes(3)/2);
-            hlfSizeX = ceil(sizes(2)/2);
-            disp('Preparing replay:');
-            infoTic = 5;
-            for hStep = 1:sizes(1)
-                if (floor(hStep * 100 / sizes(1)) > infoTic)
-                    disp([num2str(infoTic) '% completed']);
-                    infoTic = infoTic + 5;
-                end
-                for xStep = 1:sizes(2)
-                    for yStep = 1:sizes(3)     
-                        if (obj.phenomenaMatrix(hStep, xStep, yStep) >= dangerID)
-                            if (obj.phenomenaMatrix(hStep, xStep + 1,...
-                                    yStep) < dangerID || ...
-                                obj.phenomenaMatrix(hStep, xStep - 1,...
-                                    yStep) < dangerID || ...
-                                obj.phenomenaMatrix(hStep + 1, xStep,...
-                                    yStep) < dangerID || ...
-                                obj.phenomenaMatrix(hStep - 1, xStep,...
-                                    yStep) < dangerID || ...
-                                obj.phenomenaMatrix(hStep, xStep,...
-                                    yStep + 1) < dangerID || ...
-                                obj.phenomenaMatrix(hStep, xStep,...
-                                    yStep - 1) < dangerID)
-                      
-                                [newHullLinks,newHullCoords] = ...
-                                    CloudObject.getCubeHull(xStep - ...
-                                    hlfSizeX, yStep - hlfSizeY, hStep - 1);
-                                [HullLinks_solid, HullCoords_solid] = ...
-                                    CloudObject.mergeFigureHulls(...
-                                    HullLinks_solid, HullCoords_solid,...
-                                    newHullLinks,newHullCoords);
-                            end
-                        end
-                        if(obj.phenomenaMatrix(hStep, xStep,...
-                                yStep) > 0 && bIsFullDisp == 1)
-                            [newHullLinks,newHullCoords] = CloudObject.getCubeHull(...
-                                xStep -  hlfSizeX, yStep - hlfSizeY, hStep - 1);
-                            [HullLinks_transp, HullCoords_transp] = ...
-                                CloudObject.mergeFigureHulls(HullLinks_transp, ...
-                                HullCoords_transp, newHullLinks,newHullCoords);
-                        end
-                    end
-                end
-            end
-            if (bIsFullDisp == 1)
-                trisurf(HullLinks_transp,HullCoords_transp(:,1),...
-                    HullCoords_transp(:,2),HullCoords_transp(:,3),...
-                    'EdgeAlpha', 1, 'FaceAlpha', 0);
-            end
-            trisurf(HullLinks_solid,HullCoords_solid(:,1),...
-                    HullCoords_solid(:,2),HullCoords_solid(:,3),...
-                    'EdgeAlpha', 0, 'FaceAlpha', 1);
             
-            set(ax,'xlim',[-hlfSizeX hlfSizeX],'ylim',...
-                [-hlfSizeY hlfSizeY],'zlim',[0 sizes(1) - 1]);
-            colormap(color);
-            toc
-        end
-        function displayCloud_Unoptimized(obj, dangerID, bIsFullDisp, color, ax)
-            tic
-            if nargin == 4
+            if nargin == 5 || nargin == 3
                 figure('units','normalized','outerposition',[0.10 0.05 0.8 0.9])
                 hold on;
                 ax = gca;
             end
-            sizes = size(obj.phenomenaMatrix);
-            hlfSizeY = ceil(sizes(3)/2);
-            hlfSizeX = ceil(sizes(2)/2);
-            for hStep = 1:sizes(1)
-                for xStep = 1:sizes(2)
-                    for yStep = 1:sizes(3)
-                        if (obj.phenomenaMatrix(hStep, xStep, yStep) >= dangerID)
-                            CloudObject.plotOneCube(ax, xStep - hlfSizeX,...
-                                yStep - hlfSizeY, hStep - 1,0,1);
-                        elseif(obj.phenomenaMatrix(hStep, xStep,...
-                                yStep) > 0 && bIsFullDisp == 1)
-                            CloudObject.plotOneCube(ax, xStep - hlfSizeX,...
-                                yStep - hlfSizeY, hStep - 1, 1, 0);
-                        end
-                    end
-                end
+            hlf1 = floor(length(img(:,1))/2);
+            hlf2 = floor(length(img(1,:))/2);
+            set(gcf,'CurrentAxes',ax);
+            contour(-hlf1:hlf1,-hlf2:hlf2, img');
+            if nargin == 4
+                xlabel(xlabel);
+                ylabel(ylabel);
             end
-            set(ax,'xlim',[-hlfSizeX hlfSizeX],'ylim',...
-                [-hlfSizeY hlfSizeY],'zlim',[0 sizes(1) - 1]);
-            colormap(color);
-            toc
         end
     end
     methods(Access = private)
@@ -373,6 +299,109 @@ classdef CloudObject
             end
             HullLinks = [HullLinks ; mergeHull];
         end
-     
     end
 end
+
+%  function displayCloud_Unoptimized(obj, dangerID, bIsFullDisp, color, ax)
+%             tic
+%             if nargin == 4
+%                 figure('units','normalized','outerposition',[0.10 0.05 0.8 0.9])
+%                 hold on;
+%                 ax = gca;
+%             end
+%             sizes = size(obj.phenomenaMatrix);
+%             hlfSizeY = ceil(sizes(3)/2);
+%             hlfSizeX = ceil(sizes(2)/2);
+%             for hStep = 1:sizes(1)
+%                 for xStep = 1:sizes(2)
+%                     for yStep = 1:sizes(3)
+%                         if (obj.phenomenaMatrix(hStep, xStep, yStep) >= dangerID)
+%                             CloudObject.plotOneCube(ax, xStep - hlfSizeX,...
+%                                 yStep - hlfSizeY, hStep - 1,0,1);
+%                         elseif(obj.phenomenaMatrix(hStep, xStep,...
+%                                 yStep) > 0 && bIsFullDisp == 1)
+%                             CloudObject.plotOneCube(ax, xStep - hlfSizeX,...
+%                                 yStep - hlfSizeY, hStep - 1, 1, 0);
+%                         end
+%                     end
+%                 end
+%             end
+%             set(ax,'xlim',[-hlfSizeX hlfSizeX],'ylim',...
+%                 [-hlfSizeY hlfSizeY],'zlim',[0 sizes(1) - 1]);
+%             colormap(color);
+%             toc
+%         end
+
+%         function displayCloud_Unoptimized2(obj, dangerID, bIsFullDisp, color, ax)
+%             tic
+%             if nargin == 4
+%                 figure('units','normalized','outerposition',[0.10 0.05 0.8 0.9])
+%                 hold on;
+%                 ax = gca;
+%             end
+%             HullCoords_solid = [];
+%             HullLinks_solid = [];
+%             if bIsFullDisp == 1
+%                 HullCoords_transp = [];
+%                 HullLinks_transp = [];
+%             end
+%             sizes = size(obj.phenomenaMatrix);
+%             hlfSizeY = ceil(sizes(3)/2);
+%             hlfSizeX = ceil(sizes(2)/2);
+%             disp('Preparing replay:');
+%             infoTic = 5;
+%             for hStep = 1:sizes(1)
+%                 if (floor(hStep * 100 / sizes(1)) > infoTic)
+%                     disp([num2str(infoTic) '% completed']);
+%                     infoTic = infoTic + 5;
+%                 end
+%                 for xStep = 1:sizes(2)
+%                     for yStep = 1:sizes(3)     
+%                         if (obj.phenomenaMatrix(hStep, xStep, yStep) >= dangerID)
+%                             if (obj.phenomenaMatrix(hStep, xStep + 1,...
+%                                     yStep) < dangerID || ...
+%                                 obj.phenomenaMatrix(hStep, xStep - 1,...
+%                                     yStep) < dangerID || ...
+%                                 obj.phenomenaMatrix(hStep + 1, xStep,...
+%                                     yStep) < dangerID || ...
+%                                 obj.phenomenaMatrix(hStep - 1, xStep,...
+%                                     yStep) < dangerID || ...
+%                                 obj.phenomenaMatrix(hStep, xStep,...
+%                                     yStep + 1) < dangerID || ...
+%                                 obj.phenomenaMatrix(hStep, xStep,...
+%                                     yStep - 1) < dangerID)
+%                       
+%                                 [newHullLinks,newHullCoords] = ...
+%                                     CloudObject.getCubeHull(xStep - ...
+%                                     hlfSizeX, yStep - hlfSizeY, hStep - 1);
+%                                 [HullLinks_solid, HullCoords_solid] = ...
+%                                     CloudObject.mergeFigureHulls(...
+%                                     HullLinks_solid, HullCoords_solid,...
+%                                     newHullLinks,newHullCoords);
+%                             end
+%                         end
+%                         if(obj.phenomenaMatrix(hStep, xStep,...
+%                                 yStep) > 0 && bIsFullDisp == 1)
+%                             [newHullLinks,newHullCoords] = CloudObject.getCubeHull(...
+%                                 xStep -  hlfSizeX, yStep - hlfSizeY, hStep - 1);
+%                             [HullLinks_transp, HullCoords_transp] = ...
+%                                 CloudObject.mergeFigureHulls(HullLinks_transp, ...
+%                                 HullCoords_transp, newHullLinks,newHullCoords);
+%                         end
+%                     end
+%                 end
+%             end
+%             if (bIsFullDisp == 1)
+%                 trisurf(HullLinks_transp,HullCoords_transp(:,1),...
+%                     HullCoords_transp(:,2),HullCoords_transp(:,3),...
+%                     'EdgeAlpha', 1, 'FaceAlpha', 0);
+%             end
+%             trisurf(HullLinks_solid,HullCoords_solid(:,1),...
+%                     HullCoords_solid(:,2),HullCoords_solid(:,3),...
+%                     'EdgeAlpha', 0, 'FaceAlpha', 1);
+%             
+%             set(ax,'xlim',[-hlfSizeX hlfSizeX],'ylim',...
+%                 [-hlfSizeY hlfSizeY],'zlim',[0 sizes(1) - 1]);
+%             colormap(color);
+%             toc
+%         end
